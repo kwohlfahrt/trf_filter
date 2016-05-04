@@ -61,6 +61,15 @@ class Sequence(str):
         else:
             yield from map(Sequence('').join, cartesian(new_bases, self[1:].ambiguous))
 
+    def findAll(self, query, start=0):
+        try:
+            index = self.index(query, start)
+        except ValueError:
+            return
+        else:
+            yield index
+            yield from self.findAll(query, index+1)
+
 class Repeat:
     def __init__(self, seq_name: str, start: int, end: int, period: int, copy_number: float,
                  consensus_size: int, percent_matches: int, percent_indels: int,
@@ -97,33 +106,50 @@ class Repeat:
     def exact_matches(self) -> int:
         return self.sequence.count(self.consensus_sequence)
 
-def hasPam(repeat: Repeat, pam: Sequence) -> bool:
-    # To find PAMs on the edge
-    seq = repeat.consensus_sequence + repeat.consensus_sequence[:len(pam)]
-    return (any(pam in seq for pam in pam.ambiguous)
-            or any(pam in seq for pam in pam.reverse_complement.ambiguous))
+    def __len__(self):
+        return self.end - self.start
 
-def findPam(seq: Repeat, pam: Sequence):
+def findPams(seq: Sequence, pam: Sequence):
     # To find PAMs on the edge
-    seq = seq + seq[:len(pam)]
-    return filter(lambda x: 0 <= x, map(seq.find, pam.ambiguous))
+    ext_seq = seq + seq[:len(pam)]
+    return filter(lambda x: 0 <= x < len(seq),
+                  chain.from_iterable(map(ext_seq.findAll, pam.ambiguous)))
+
+def hasPam(seq: Sequence, pam: Sequence) -> bool:
+    return (any(findPams(seq, pam)) or any(findPams(seq, pam.reverse_complement)))
 
 def rotate(s: str, n: int):
+    n = n % len(s)
     return s[n:] + s[:n]
 
-def extractGuide(seq: Sequence, pam: Sequence, length: int=20):
-    seq = seq + seq[:len(pam)] # To find PAMs on the edge
-    try:
-        rot = next(filter(lambda x: 0 <= x < len(seq), map(seq.find, pam.ambiguous)))
-    except StopIteration:
-        rot = next(filter(lambda x: 0 <= x < len(seq),
-                          map(seq.find, pam.reverse_complement.ambiguous)))
-        idxs = slice(None, len(pam) + length)
-    else:
-        rot = rot + 3
-        idxs = slice(-length - len(pam), None)
+class Guide:
+    def __init__(self, repeat: Repeat, position: int, length: int, forward: bool):
+        self.repeat = repeat
+        self.position = position
+        self.length = length
+        self.forward = forward
 
-    return rotate(seq, rot)[idxs]
+    @classmethod
+    def extractGuides(cls, repeat: Repeat, pam: Sequence, length: int):
+        seq = repeat.consensus_sequence
+        rots = findPams(seq, pam)
+        rots = map(lambda x: x + len(pam), rots)
+        yield from map(partial(cls, repeat, length=length, forward=True), rots)
+
+        rots = findPams(seq, pam.reverse_complement)
+        yield from map(partial(cls, repeat, length=length, forward=False), rots)
+
+    @property
+    def exact_matches(self) -> int:
+        return self.repeat.sequence.count(self.sequence)
+
+    @property
+    def sequence(self):
+        seq = self.repeat.consensus_sequence
+        if self.forward:
+            return rotate(seq, self.position)[-self.length:]
+        else:
+            return rotate(seq, self.position)[:self.length]
 
 class Alignment:
     def __init__(self, name: str, flag: int, ref_name: str, start_pos: int, quality: int,
@@ -187,6 +213,7 @@ def align(index, *queries):
                  stdout=PIPE)
     return map(Alignment.fromLine, bowtie.stdout.decode().splitlines())
 
+# TODO: make more generic (start, end)
 def meanNucVariance(repeat, positions, coords):
     chr_positions = positions[repeat.seq_name]
     chr_coords = coords[repeat.seq_name]
@@ -231,7 +258,7 @@ if __name__ == '__main__':
                 positions[ch].append(f['structures']['0']['particles'][ch]['positions'][()])
                 coords[ch].append(f['structures']['0']['coords'][ch][()])
 
-    all_repeats = []
+    all_guides = []
     for filename in args.file:
         with open(filename, 'r') as f:
             seq_name = next(filter(lambda l: l.startswith("Sequence: "), f)).rstrip()[len("Sequence: "):]
@@ -240,29 +267,27 @@ if __name__ == '__main__':
 
             lines = filter(None, map(str.rstrip, f))
             repeats = map(partial(Repeat.fromLine, seq_name), lines)
-            repeats = filter(lambda r: r.exact_matches >= args.matches, repeats)
             repeats = filter(lambda r: r.consensus_size >= args.length, repeats)
-            repeats = filter(partial(hasPam, pam=args.pam), repeats)
+            guides = chain.from_iterable(map(partial(Guide.extractGuides, pam=args.pam,
+                                                     length=args.length), repeats))
+            guides = filter(lambda g: g.exact_matches >= args.matches, guides)
 
             if args.index is not None:
-                guide = partial(extractGuide, pam=args.pam, length=args.length)
-                repeats = filter(lambda r: all(a.overlaps(r.start, r.end) for a in
-                                               align(args.index, guide(r.consensus_sequence))),
-                                 repeats)
+                guides = filter(lambda g: all(a.overlaps(g.repeat.start, g.repeat.end) for a in
+                                              align(args.index, g.sequence)), guides)
 
             # Minimum variance per chromosome
-            all_repeats.append(min(repeats, default=None,
-                                   key=partial(meanNucVariance, positions=positions, coords=coords)))
+            all_guides.append(min(guides, default=None,
+                                  key=lambda g: meanNucVariance(g.repeat, positions, coords)))
 
-    all_repeats = filter(lambda x: x is not None, all_repeats)
-    all_repeats = sorted(all_repeats, key=partial(meanNucVariance,
-                                                  positions=positions, coords=coords))
+    all_guides = filter(lambda x: x is not None, all_guides)
+    all_guides = sorted(all_guides, key=lambda g: meanNucVariance(g.repeat, positions, coords))
 
-    for repeat in all_repeats:
-        print("chr", repeat.seq_name, ":", repeat.start, "-", repeat.end, sep="")
-        print("Positional variance:", meanNucVariance(repeat, positions, coords))
-        print("Repeat length:", repeat.end - repeat.start, "bp")
-        print("Exact repeats:", repeat.exact_matches)
-        seq = extractGuide(repeat.consensus_sequence, args.pam, args.length)
-        print(repr(seq))
+    for guide in all_guides:
+        print("chr", guide.repeat.seq_name, ":", guide.repeat.start, "-", guide.repeat.end, sep="")
+        print("Positional variance:", meanNucVariance(guide.repeat, positions, coords))
+        print("Repeat length:", len(guide.repeat), "bp")
+        print("Exact repeats:", guide.exact_matches)
+        print(repr(guide.sequence))
+        print(repr(guide.repeat.consensus_sequence))
         print()
