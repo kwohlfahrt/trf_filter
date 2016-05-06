@@ -293,10 +293,12 @@ if __name__ == '__main__':
                                               align(args.index, g.sequence)), guides)
 
             # Minimum variance per chromosome
-            all_guides.append(min(guides, default=None,
-                                  key=lambda g: meanNucVariance(g.repeat, positions, coords)))
+            try:
+                all_guides.append(min(guides,
+                                      key=lambda g: meanNucVariance(g.repeat, positions, coords)))
+            except ValueError:
+                continue
 
-    all_guides = filter(lambda x: x is not None, all_guides)
     all_guides = sorted(all_guides, key=lambda g: meanNucVariance(g.repeat, positions, coords))
 
     for guide in all_guides:
