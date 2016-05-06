@@ -220,6 +220,7 @@ def meanNucVariance(repeat, positions, coords):
     return mean(list(map(partial(nucVariance, repeat), chr_positions, chr_coords)))
 
 def nucVariance(repeat, positions, coords):
+    positions = positions.astype('int')
     particles = ((positions > repeat.start) & (positions < repeat.end))
     particles, = nonzero(particles)
     if len(particles) == 0:
@@ -233,12 +234,12 @@ def meanDataTrack(repeat, track):
     return mean(list(map(partial(dataTrack, repeat), track[repeat.seq_name])))
 
 def dataTrack(repeat, track):
-    particles = ((track['regions'].ravel() > repeat.start) & (track['regions'].ravel() < repeat.end))
+    regions = track['regions'].ravel().astype('int')
+    particles = ((regions > repeat.start) & (regions < repeat.end))
     particles, = nonzero(particles)
     if len(particles) == 0:
         # No particle contained in repeat region, use nearest
-        distances = [abs(track['regions'].ravel() - repeat.start),
-                     abs(track['regions'].ravel() - repeat.end)]
+        distances = [abs(regions - repeat.start), abs(regions - repeat.end)]
         particles = unique(argmin(distances, axis=1))
     particles = list(particles)
     return mean(track['values'].ravel()[particles])
