@@ -229,6 +229,19 @@ def nucVariance(repeat, positions, coords):
     particles = list(particles)
     return mean(var(coords[:, particles, :], axis=0))
 
+def meanDataTrack(repeat, track):
+    return mean(list(map(partial(dataTrack, repeat), track[repeat.seq_name])))
+
+def dataTrack(repeat, track):
+    particles = ((track['regions'].ravel() > repeat.start) & (track['regions'].ravel() < repeat.end))
+    particles, = nonzero(particles)
+    if len(particles) == 0:
+        # No particle contained in repeat region, use nearest
+        distances = [abs(track['regions'].ravel() - repeat.start),
+                     abs(track['regions'].ravel() - repeat.end)]
+        particles = unique(argmin(distances, axis=1))
+    particles = list(particles)
+    return mean(track['values'].ravel()[particles])
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
@@ -252,11 +265,14 @@ if __name__ == '__main__':
 
     positions = defaultdict(list)
     coords = defaultdict(list)
+    depths = defaultdict(list)
     for nuc in args.nucfiles:
         with h5py.File(nuc, 'r') as f:
             for ch in chromosomes:
                 positions[ch].append(f['structures']['0']['particles'][ch]['positions'][()])
                 coords[ch].append(f['structures']['0']['coords'][ch][()])
+                depths[ch].append({k: v[()] for k, v in
+                                   f['dataTracks']['derived']['nuc_depth'][ch].items()})
 
     all_guides = []
     for filename in args.file:
@@ -288,6 +304,9 @@ if __name__ == '__main__':
         print("Positional variance:", meanNucVariance(guide.repeat, positions, coords))
         print("Repeat length:", len(guide.repeat), "bp")
         print("Exact repeats:", guide.exact_matches)
+        print("Depth:", meanDataTrack(guide.repeat, depths))
+        print("Guide:")
         print(repr(guide.sequence))
+        print("Repeat consensus sequence:")
         print(repr(guide.repeat.consensus_sequence))
         print()
