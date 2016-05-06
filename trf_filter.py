@@ -222,11 +222,11 @@ def meanNucVariance(repeat, positions, coords):
 def nucVariance(repeat, positions, coords):
     particles = ((positions > repeat.start) & (positions < repeat.end))
     particles, = nonzero(particles)
-    if not particles:
+    if len(particles) == 0:
         # No particle contained in repeat region, use nearest
-        distances = [positions - repeat.start, positions - repeat.end]
+        distances = [abs(positions - repeat.start), abs(positions - repeat.end)]
         particles = unique(argmin(distances, axis=1))
-    particles = tuple(particles)
+    particles = list(particles)
     return mean(var(coords[:, particles, :], axis=0))
 
 
