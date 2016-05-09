@@ -151,6 +151,13 @@ class Guide:
         else:
             return rotate(seq, self.position)[:self.length]
 
+    @property
+    def cloning_sequence(self):
+        if self.forward:
+            return self.sequence[:-3]
+        else:
+            return self.sequence.reverse_complement[:-3]
+
 class Alignment:
     def __init__(self, name: str, flag: int, ref_name: str, start_pos: int, quality: int,
                  cigar: str, next_name: str, next_pos: int, template_len: int,
@@ -308,7 +315,9 @@ if __name__ == '__main__':
         print("Repeat length:", len(guide.repeat), "bp")
         print("Exact repeats:", guide.exact_matches)
         print("Depth:", meanDataTrack(guide.repeat, depths))
-        print("Guide:")
+        print("Cloning sequence:")
+        print(repr(guide.cloning_sequence))
+        print("Guide region:")
         print(repr(guide.sequence))
         print("Repeat consensus sequence:")
         print(repr(guide.repeat.consensus_sequence))
