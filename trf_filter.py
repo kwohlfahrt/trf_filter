@@ -107,7 +107,7 @@ class Repeat:
         return self.sequence.count(self.consensus_sequence)
 
     def __len__(self):
-        return self.end - self.start
+        return self.end - self.start + 1
 
 def findPams(seq: Sequence, pam: Sequence):
     # To find PAMs on the edge
@@ -123,21 +123,28 @@ def rotate(s: str, n: int):
     return s[n:] + s[:n]
 
 class Guide:
-    def __init__(self, repeat: Repeat, position: int, length: int, forward: bool):
+    def __init__(self, repeat: Repeat, position: int, length: int, forward: bool, pam_length: int):
         self.repeat = repeat
         self.position = position
         self.length = length
         self.forward = forward
+        self.pam_length = pam_length
+
+    def __repr__(self):
+        if self.forward:
+            return "Guide({}-{})".format(self.position, self.position + self.length)
+        else:
+            return "Guide({}-{})".format(self.position + self.length, self.position)
 
     @classmethod
     def extractGuides(cls, repeat: Repeat, pam: Sequence, length: int):
         seq = repeat.consensus_sequence
         rots = findPams(seq, pam)
         rots = map(lambda x: x + len(pam), rots)
-        yield from map(partial(cls, repeat, length=length, forward=True), rots)
+        yield from map(partial(cls, repeat, length=length, forward=True, pam_length=len(pam)), rots)
 
         rots = findPams(seq, pam.reverse_complement)
-        yield from map(partial(cls, repeat, length=length, forward=False), rots)
+        yield from map(partial(cls, repeat, length=length, forward=False, pam_length=len(pam)), rots)
 
     @property
     def exact_matches(self) -> int:
@@ -146,6 +153,7 @@ class Guide:
     @property
     def sequence(self):
         seq = self.repeat.consensus_sequence
+        seq = seq * (self.length // len(seq) + 1)
         if self.forward:
             return rotate(seq, self.position)[-self.length:]
         else:
@@ -154,9 +162,9 @@ class Guide:
     @property
     def cloning_sequence(self):
         if self.forward:
-            return self.sequence[:-3]
+            return self.sequence[:-self.pam_length]
         else:
-            return self.sequence.reverse_complement[:-3]
+            return self.sequence.reverse_complement[:-self.pam_length]
 
 class Alignment:
     def __init__(self, name: str, flag: int, ref_name: str, start_pos: int, quality: int,
@@ -215,7 +223,7 @@ class Alignment:
 
 def align(index, *queries):
     query_seq = ','.join(queries)
-    bowtie = run(["bowtie2", "-U", query_seq, "-c", "-x", args.index, "-a",
+    bowtie = run(["bowtie2", "-U", query_seq, "-c", "-x", index, "-a",
                   "--quiet", "--no-head", "--mm", "--threads", str(cpu_count()), "--reorder"],
                  stdout=PIPE)
     return map(Alignment.fromLine, bowtie.stdout.decode().splitlines())
