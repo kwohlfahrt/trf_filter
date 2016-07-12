@@ -1,10 +1,16 @@
-from unittest import TestCase
+from unittest import TestCase, skipUnless
 
 from pathlib import Path
 from functools import partial
 from subprocess import run, PIPE
+from shutil import which
+from textwrap import dedent
 from tempfile import TemporaryDirectory
 from trf_filter import *
+
+HAVE_BOWTIE = ( which("bowtie2-build") is not None
+                and which("bowtie2") is not None )
+HAVE_TRF = ( which("trf") is not None )
 
 class TestSequence(TestCase):
     def test_complement(self):
@@ -20,6 +26,13 @@ class TestSequence(TestCase):
     def test_find_all(self):
         seq = Sequence("TACGTGGCAC")
         self.assertEqual(list(seq.findAll("AC")), [1, 8])
+
+    def test_repr(self):
+        seq = Sequence("TACGTGGCAC")
+        expected = """\
+            5'-TACGTGGCAC-3'
+            3'-ATGCACCGTG-5'"""
+        self.assertEqual(repr(seq), dedent(expected))
 
 class RepeatTest(TestCase):
     repeat_path = Path(__file__).parent / "fixtures" / "repeats.dat"
@@ -97,13 +110,14 @@ class TestGuide(RepeatTest):
         self.assertEqual([g.exact_matches for g in self.fwd_guides], [11, 6, 11])
         self.assertEqual([g.exact_matches for g in self.rev_guides], [11, 11])
 
+@skipUnless(HAVE_BOWTIE, "Bowtie not installed")
 class TestAlignment(TestCase):
-    seq_path = Path(__file__).parent / "fixtures" / "seq.fa"
+    seq_path = Path(__file__).parent / "fixtures" / "alignment.fa"
 
     @classmethod
     def setUpClass(cls):
         cls.index_dir = TemporaryDirectory()
-        cls.index = str(Path(cls.index_dir.name) / "seq")
+        cls.index = str(Path(cls.index_dir.name) / "alignment")
         run(["bowtie2-build", "-q", "-f", str(cls.seq_path), cls.index],
             stdout=PIPE, stderr=PIPE)
 
@@ -130,6 +144,54 @@ class TestAlignment(TestCase):
         self.assertEqual(len(list(align(self.index, "tgcaagctgatc"))), 2)
         alignments = list(align(self.index, "tgcaagctgatctgcacagactggt", "aaagctgactgtattaatcaa"))
         self.assertEqual(len(alignments), 2)
+
+@skipUnless(HAVE_BOWTIE and HAVE_TRF, "Bowtie not installed")
+class TestOutput(TestCase):
+    seq_path = Path(__file__).parent / "fixtures" / "output.fa"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.index_dir = TemporaryDirectory()
+        cls.trf_dir = TemporaryDirectory()
+        cls.index = str(Path(cls.index_dir.name) / "seq")
+        run(["bowtie2-build", "-q", "-f", str(cls.seq_path), cls.index],
+            stdout=PIPE, stderr=PIPE)
+        # trf File Match Mismatch Delta PM PI Minscore MaxPeriod
+        run(["trf", str(cls.seq_path.resolve()),
+             "2", "7", "7", "80", "10", "544", "200", "-h", "-d"],
+            cwd=cls.trf_dir.name, stdout=PIPE, stderr=PIPE)
+
+    def test_output(self):
+        trfs = map(str, Path(self.trf_dir.name).glob("*.dat"))
+        #trfs = list(trfs); print(open(trfs[0]).readlines())
+        index = str(Path(self.index_dir.name) / "seq")
+        output = run(["../trf_filter.py", "--matches", "2", "--index", index, "--pam", "GNN"]
+                     + list(trfs), stderr=PIPE, stdout=PIPE, universal_newlines=True).stdout
+        # nan due to no nuc file
+        expected = """\
+            chr chr19_extract:363-690
+            Positional variance: nan
+            Repeat length: 328 bp
+            Exact repeats: 4
+            Depth: nan
+            Cloning sequences:
+            5'-ACCGCCCCACTGCCCCCCGCT-3'
+            5'-AAACAGCGGGGGGCAGTGGGG-3'
+            Guide region:
+            5'-CCCCACTGCCCCCCGCTGAA-3'
+            3'-GGGGTGACGGGGGGCGACTT-5'
+            Repeat consensus sequence:
+            5'-GCTGAAGTTACAGATGGTTAGCTCCCCCCCCAGGCAGACGCTTGTCCTGTCCCCCCACTGCCCCCC-3'
+            3'-CGACTTCAATGTCTACCAATCGAGGGGGGGGTCCGTCTGCGAACAGGACAGGGGGGTGACGGGGGG-5'
+
+            """
+        self.assertEqual(output, dedent(expected))
+
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.index_dir.cleanup()
+        cls.trf_dir.cleanup()
 
 if __name__ == "__main__":
     from unittest import main
