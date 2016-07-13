@@ -239,6 +239,13 @@ class TestRegion(TestCase):
         self.assertFalse(outside in region)
         self.assertFalse(different in region)
 
+    def test_grow(self):
+        region = Region.fromLine("chr1:500-700")
+        growed = region.grow(25)
+        self.assertEqual(growed.seq_name, "chr1")
+        self.assertEqual(growed.start, 475)
+        self.assertEqual(growed.end, 725)
+
 if __name__ == "__main__":
     from unittest import main
     main()

@@ -93,6 +93,9 @@ class Region:
     def __repr__(self):
         return "Region({}: {}-{})".format(self.seq_name, self.start, self.end)
 
+    def grow(self, amount):
+        return type(self)(self.seq_name, self.start-amount, self.end+amount)
+
 class Repeat:
     def __init__(self, seq_name: str, start: int, end: int, period: int, copy_number: float,
                  consensus_size: int, percent_matches: int, percent_indels: int,
@@ -311,8 +314,12 @@ if __name__ == '__main__':
                         help="The PAM sequence that must be contained in the repeat.")
     parser.add_argument("--regions", type=Region.fromLine, nargs='*', default=[],
                         help="The regions that repeats must fall into.")
+    parser.add_argument("--region-pad", type=int, default=0,
+                        help="How far (bp) outside a region is allowed")
 
     args = parser.parse_args()
+
+    regions = list(map(partial(Region.grow, amount=args.region_pad), args.regions))
 
     positions = defaultdict(list)
     coords = defaultdict(list)
@@ -337,7 +344,7 @@ if __name__ == '__main__':
             repeats = filter(lambda r: r.consensus_size >= args.length, repeats)
             if args.regions:
                 repeats = filter(lambda repeat: any(repeat.region in region
-                                                    for region in args.regions), repeats)
+                                                    for region in regions), repeats)
             guides = chain.from_iterable(map(partial(Guide.extractGuides, pam=args.pam,
                                                      length=args.length), repeats))
             guides = filter(lambda g: g.exact_matches >= args.matches, guides)
