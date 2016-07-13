@@ -331,6 +331,7 @@ if __name__ == '__main__':
                 coords[ch].append(f['structures']['0']['coords'][ch][()])
                 depths[ch].append({k: v[()] for k, v in
                                    f['dataTracks']['derived']['nuc_depth'][ch].items()})
+    meanVariance = partial(meanNucVariance, positions=positions, coords=coords)
 
     all_guides = []
     for filename in args.file:
@@ -355,12 +356,11 @@ if __name__ == '__main__':
 
             # Minimum variance per chromosome
             try:
-                all_guides.append(min(guides,
-                                      key=lambda g: meanNucVariance(g.repeat, positions, coords)))
+                all_guides.append(min(guides, key=lambda g: meanVariance(g.repeat)))
             except ValueError:
                 continue
 
-    all_guides = sorted(all_guides, key=lambda g: meanNucVariance(g.repeat, positions, coords))
+    all_guides = sorted(all_guides, key=lambda g: meanVariance(g.repeat))
 
     for guide in all_guides:
         print("chr", guide.repeat.seq_name, ":", guide.repeat.start, "-", guide.repeat.end, sep="")
