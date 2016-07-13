@@ -70,14 +70,35 @@ class Sequence(str):
             yield index
             yield from self.findAll(query, index+1)
 
+class Region:
+    def __init__(self, seq_name: str, start: int, end: int):
+        self.seq_name = seq_name
+        self.start = start
+        self.end = end
+
+    @classmethod
+    def fromLine(cls, line):
+        name, region = line.split(':', 1)
+        start, end = map(int, region.split('-', 1))
+        return cls(name, start, end)
+
+    def __len__(self):
+        return self.end - self.start + 1
+
+    def __contains__(self, other):
+        return ( self.seq_name == other.seq_name
+                 and self.start <= other.start <= self.end
+                 and self.start <= other.end <= self.end )
+
+    def __repr__(self):
+        return "Region({}: {}-{})".format(self.seq_name, self.start, self.end)
+
 class Repeat:
     def __init__(self, seq_name: str, start: int, end: int, period: int, copy_number: float,
                  consensus_size: int, percent_matches: int, percent_indels: int,
                  score: int, A: int, C: int, G: int, T: int, entropy: float,
                  consensus_sequence: Sequence, sequence: str):
-        self.seq_name = seq_name
-        self.start = start
-        self.end = end
+        self.region = Region(seq_name, start, end)
         self.period = period
         self.copy_number = copy_number
         self.consensus_size = consensus_size
@@ -106,8 +127,20 @@ class Repeat:
     def exact_matches(self) -> int:
         return self.sequence.count(self.consensus_sequence)
 
+    @property
+    def seq_name(self):
+        return self.region.seq_name
+
+    @property
+    def start(self):
+        return self.region.start
+
+    @property
+    def end(self):
+        return self.region.end
+
     def __len__(self):
-        return self.end - self.start + 1
+        return len(self.region)
 
 def findPams(seq: Sequence, pam: Sequence):
     # To find PAMs on the edge
@@ -276,6 +309,8 @@ if __name__ == '__main__':
                         help="The minimum alignment score for bowtie2 alignments")
     parser.add_argument("--pam", type=Sequence, required=True,
                         help="The PAM sequence that must be contained in the repeat.")
+    parser.add_argument("--regions", type=Region.fromLine, nargs='*', default=[],
+                        help="The regions that repeats must fall into.")
 
     args = parser.parse_args()
 
@@ -300,6 +335,9 @@ if __name__ == '__main__':
             lines = filter(None, map(str.rstrip, f))
             repeats = map(partial(Repeat.fromLine, seq_name), lines)
             repeats = filter(lambda r: r.consensus_size >= args.length, repeats)
+            if args.regions:
+                repeats = filter(lambda repeat: any(repeat.region in region
+                                                    for region in args.regions), repeats)
             guides = chain.from_iterable(map(partial(Guide.extractGuides, pam=args.pam,
                                                      length=args.length), repeats))
             guides = filter(lambda g: g.exact_matches >= args.matches, guides)

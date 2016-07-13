@@ -148,6 +148,7 @@ class TestAlignment(TestCase):
 @skipUnless(HAVE_BOWTIE and HAVE_TRF, "Bowtie not installed")
 class TestOutput(TestCase):
     seq_path = Path(__file__).parent / "fixtures" / "output.fa"
+    maxDiff = None
 
     @classmethod
     def setUpClass(cls):
@@ -187,11 +188,56 @@ class TestOutput(TestCase):
             """
         self.assertEqual(output, dedent(expected))
 
+    def test_region_filter(self):
+        trfs = map(str, Path(self.trf_dir.name).glob("*.dat"))
+        #trfs = list(trfs); print(open(trfs[0]).readlines())
+        index = str(Path(self.index_dir.name) / "seq")
+        output = run(["../trf_filter.py", "--matches", "2", "--index", index, "--pam", "GNN",
+                      "--regions", "19_extract:160000-170000", "--"]
+                     + list(trfs), stderr=PIPE, stdout=PIPE, universal_newlines=True).stdout
+        # nan due to no nuc file
+        expected = """\
+            chr19_extract:162033-162464
+            Positional variance: nan
+            Repeat length: 432 bp
+            Exact repeats: 7
+            Depth: nan
+            Cloning sequences:
+            5'-ACCGCCTGAGCTCTCTCACCT-3'
+            5'-AAACAGGTGAGAGAGCTCAGG-3'
+            Guide region:
+            5'-CCTGAGCTCTCTCACCTGAC-3'
+            3'-GGACTCGAGAGAGTGGACTG-5'
+            Repeat consensus sequence:
+            5'-CTCTCTCACCTGACCCCCAGGCTCTATGATACCCCTGAG-3'
+            3'-GAGAGAGTGGACTGGGGGTCCGAGATACTATGGGGACTC-5'
+
+            """
+        self.assertEqual(output, dedent(expected))
+
 
     @classmethod
     def tearDownClass(cls):
         cls.index_dir.cleanup()
         cls.trf_dir.cleanup()
+
+class TestRegion(TestCase):
+    def test_from_line(self):
+        region = Region.fromLine("chr1:500-700")
+        self.assertEqual(region.seq_name, "chr1")
+        self.assertEqual(region.start, 500)
+        self.assertEqual(region.end, 700)
+
+    def test_contains(self):
+        region = Region("chr1", 300, 560)
+        inside = Region("chr1", 300, 540)
+        extends = Region("chr1", 320, 580)
+        outside = Region("chr1", 570, 680)
+        different = Region("chr2", 300, 540)
+        self.assertTrue(inside in region)
+        self.assertFalse(extends in region)
+        self.assertFalse(outside in region)
+        self.assertFalse(different in region)
 
 if __name__ == "__main__":
     from unittest import main
