@@ -169,7 +169,7 @@ class TestOutput(TestCase):
                      + list(trfs), stderr=PIPE, stdout=PIPE, universal_newlines=True).stdout
         # nan due to no nuc file
         expected = """\
-            chr chr19_extract:363-690
+            chr19_extract:363-690
             Positional variance: nan
             Repeat length: 328 bp
             Exact repeats: 4
