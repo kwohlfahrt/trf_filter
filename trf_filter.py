@@ -333,19 +333,20 @@ if __name__ == '__main__':
                                    f['dataTracks']['derived']['nuc_depth'][ch].items()})
     meanVariance = partial(meanNucVariance, positions=positions, coords=coords)
 
-    all_guides = []
+    all_guides = {}
     for filename in args.file:
         with open(filename, 'r') as f:
             seq_name = next(filter(lambda l: l.startswith("Sequence: "), f)).rstrip()[len("Sequence: "):]
+            if not args.regions:
+                regions.append(Region(seq_name, 0, float('inf')))
             str_params = next(filter(lambda l: l.startswith("Parameters: "), f)).rstrip()[len("Parameters: "):]
             params = Parameters(*map(int, str_params.split()))
 
             lines = filter(None, map(str.rstrip, f))
             repeats = map(partial(Repeat.fromLine, seq_name), lines)
             repeats = filter(lambda r: r.consensus_size >= args.length, repeats)
-            if args.regions:
-                repeats = filter(lambda repeat: any(repeat.region in region
-                                                    for region in regions), repeats)
+            repeats = filter(lambda repeat: any(repeat.region in region
+                                                for region in regions), repeats)
             guides = chain.from_iterable(map(partial(Guide.extractGuides, pam=args.pam,
                                                      length=args.length), repeats))
             guides = filter(lambda g: g.exact_matches >= args.matches, guides)
@@ -354,13 +355,17 @@ if __name__ == '__main__':
                 guides = filter(lambda g: all(a.overlaps(g.repeat.start, g.repeat.end) for a in
                                               align(args.index, g.sequence)), guides)
 
-            # Minimum variance per chromosome
-            try:
-                all_guides.append(min(guides, key=lambda g: meanVariance(g.repeat)))
-            except ValueError:
-                continue
+            for guide in guides:
+                for region in regions:
+                    if guide.repeat not in region:
+                        continue
+                    try:
+                        all_guides[region] = min(all_guides[region], guide,
+                                                 key=lambda g: meanVariance(g.repeat))
+                    except KeyError:
+                        all_guides[region] = guide
 
-    all_guides = sorted(all_guides, key=lambda g: meanVariance(g.repeat))
+    all_guides = sorted(all_guides.values(), key=lambda g: meanVariance(g.repeat))
 
     for guide in all_guides:
         print("chr", guide.repeat.seq_name, ":", guide.repeat.start, "-", guide.repeat.end, sep="")

@@ -216,6 +216,56 @@ class TestOutput(TestCase):
         self.assertEqual(output, dedent(expected))
 
 
+    def test_multi_region_filter(self):
+        trfs = map(str, Path(self.trf_dir.name).glob("*.dat"))
+        #trfs = list(trfs); print(open(trfs[0]).readlines())
+        index = str(Path(self.index_dir.name) / "seq")
+        output = run(["../trf_filter.py", "--matches", "2", "--index", index, "--pam", "GNN",
+                      "--regions", "19_extract:160000-170000", "19_extract:0-1000", "--"]
+                     + list(trfs), stderr=PIPE, stdout=PIPE, universal_newlines=True).stdout
+        # nan due to no nuc file
+        expecteds = ("""\
+            chr19_extract:162033-162464
+            Positional variance: nan
+            Repeat length: 432 bp
+            Exact repeats: 7
+            Depth: nan
+            Cloning sequences:
+            5'-ACCGCCTGAGCTCTCTCACCT-3'
+            5'-AAACAGGTGAGAGAGCTCAGG-3'
+            Guide region:
+            5'-CCTGAGCTCTCTCACCTGAC-3'
+            3'-GGACTCGAGAGAGTGGACTG-5'
+            Repeat consensus sequence:
+            5'-CTCTCTCACCTGACCCCCAGGCTCTATGATACCCCTGAG-3'
+            3'-GAGAGAGTGGACTGGGGGTCCGAGATACTATGGGGACTC-5'
+
+            """, """\
+            chr19_extract:363-690
+            Positional variance: nan
+            Repeat length: 328 bp
+            Exact repeats: 4
+            Depth: nan
+            Cloning sequences:
+            5'-ACCGCCCCACTGCCCCCCGCT-3'
+            5'-AAACAGCGGGGGGCAGTGGGG-3'
+            Guide region:
+            5'-CCCCACTGCCCCCCGCTGAA-3'
+            3'-GGGGTGACGGGGGGCGACTT-5'
+            Repeat consensus sequence:
+            5'-GCTGAAGTTACAGATGGTTAGCTCCCCCCCCAGGCAGACGCTTGTCCTGTCCCCCCACTGCCCCCC-3'
+            3'-CGACTTCAATGTCTACCAATCGAGGGGGGGGTCCGTCTGCGAACAGGACAGGGGGGTGACGGGGGG-5'
+
+            """)
+        expecteds = tuple(map(dedent, expecteds))
+
+        # order is unstable in absence of variance
+        try:
+            self.assertEqual(output, ''.join(expecteds))
+        except AssertionError:
+            self.assertEqual(output, ''.join(reversed(expecteds)))
+
+
     @classmethod
     def tearDownClass(cls):
         cls.index_dir.cleanup()
