@@ -344,7 +344,6 @@ if __name__ == '__main__':
 
             lines = filter(None, map(str.rstrip, f))
             repeats = map(partial(Repeat.fromLine, seq_name), lines)
-            repeats = filter(lambda r: r.consensus_size >= args.length, repeats)
             repeats = filter(lambda repeat: any(repeat.region in region
                                                 for region in regions), repeats)
             guides = chain.from_iterable(map(partial(Guide.extractGuides, pam=args.pam,
