@@ -258,8 +258,9 @@ if __name__ == '__main__':
             exclude_mask[exclude.start:exclude.end] = True
 
         for idx in chain.from_iterable(map(seq.findAll, args.pam.ambiguous)):
-            region = Region(chromosome, idx+start, idx+start+args.length)
-            region_seq = seq[idx:idx+args.length]
+            idx += len(args.pam)
+            region = Region(chromosome, idx+start-args.length, idx+start)
+            region_seq = seq[idx-args.length:idx]
             if exclude_mask[region.start:region.end].any():
                 continue
             if not region_seq.isupper() or 'n' in region_seq or 'N' in region_seq:
@@ -267,7 +268,7 @@ if __name__ == '__main__':
 
             alignments = align(str(args.index), region_seq)
             if args.pam == "NGG":
-                off_target = region_seq[:1] + 'A' + region_seq[2:]
+                off_target = region_seq[:-2] + 'A' + region_seq[-1:]
                 alignments = chain(alignments, align(str(args.index), off_target))
             if not all(a.overlaps(region.start, region.end) for a in alignments):
                 continue
