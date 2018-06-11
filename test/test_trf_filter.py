@@ -149,6 +149,7 @@ class TestAlignment(TestCase):
 class TestOutput(TestCase):
     seq_path = Path(__file__).parent / "fixtures" / "output.fa"
     maxDiff = None
+    exe = Path(__file__).parent.parent / "trf_filter.py"
 
     @classmethod
     def setUpClass(cls):
@@ -164,9 +165,8 @@ class TestOutput(TestCase):
 
     def test_output(self):
         trfs = map(str, Path(self.trf_dir.name).glob("*.dat"))
-        #trfs = list(trfs); print(open(trfs[0]).readlines())
         index = str(Path(self.index_dir.name) / "seq")
-        output = run(["../trf_filter.py", "--matches", "2", "--index", index, "--pam", "GNN"]
+        output = run([str(self.exe), "--matches", "2", "--index", index, "--pam", "GNN"]
                      + list(trfs), stderr=PIPE, stdout=PIPE, universal_newlines=True).stdout
         # nan due to no nuc file
         expected = """\
@@ -192,7 +192,7 @@ class TestOutput(TestCase):
         trfs = map(str, Path(self.trf_dir.name).glob("*.dat"))
         #trfs = list(trfs); print(open(trfs[0]).readlines())
         index = str(Path(self.index_dir.name) / "seq")
-        output = run(["../trf_filter.py", "--matches", "2", "--index", index, "--pam", "GNN",
+        output = run([str(self.exe), "--matches", "2", "--index", index, "--pam", "GNN",
                       "--regions", "19_extract:160000-170000", "--"]
                      + list(trfs), stderr=PIPE, stdout=PIPE, universal_newlines=True).stdout
         # nan due to no nuc file
@@ -220,7 +220,7 @@ class TestOutput(TestCase):
         trfs = map(str, Path(self.trf_dir.name).glob("*.dat"))
         #trfs = list(trfs); print(open(trfs[0]).readlines())
         index = str(Path(self.index_dir.name) / "seq")
-        output = run(["../trf_filter.py", "--matches", "2", "--index", index, "--pam", "GNN",
+        output = run([str(self.exe), "--matches", "2", "--index", index, "--pam", "GNN",
                       "--regions", "19_extract:160000-170000", "19_extract:0-1000", "--"]
                      + list(trfs), stderr=PIPE, stdout=PIPE, universal_newlines=True).stdout
         # nan due to no nuc file
